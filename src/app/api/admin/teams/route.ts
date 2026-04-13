@@ -11,5 +11,16 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json(data);
+  // Supabase returns submissions as object (not array) due to unique constraint.
+  // Normalize to array for consistent frontend handling.
+  const normalized = (data || []).map((team: Record<string, unknown>) => ({
+    ...team,
+    submissions: team.submissions
+      ? Array.isArray(team.submissions)
+        ? team.submissions
+        : [team.submissions]
+      : [],
+  }));
+
+  return NextResponse.json(normalized);
 }

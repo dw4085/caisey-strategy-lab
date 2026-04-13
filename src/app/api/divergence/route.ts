@@ -17,11 +17,21 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Normalize submissions (Supabase returns object due to unique constraint)
+  const normalized = (teams || []).map((t: Record<string, unknown>) => ({
+    ...t,
+    submissions: t.submissions
+      ? Array.isArray(t.submissions)
+        ? t.submissions
+        : [t.submissions]
+      : [],
+  }));
+
   // Build team submissions array
-  const teamSubmissions: TeamSubmission[] = (teams || [])
+  const teamSubmissions: TeamSubmission[] = normalized
     .filter(
       (t: Record<string, unknown>) =>
-        Array.isArray(t.submissions) && t.submissions.length > 0
+        Array.isArray(t.submissions) && (t.submissions as unknown[]).length > 0
     )
     .map((t: Record<string, unknown>) => {
       const sub = (t.submissions as Record<string, unknown>[])[0];
@@ -55,8 +65,8 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    team1: teams[result.team1Index],
-    team2: teams[result.team2Index],
+    team1: normalized[result.team1Index],
+    team2: normalized[result.team2Index],
     distance: result.distance,
     maxDistance: MAX_DISTANCE,
     breakdown: result.breakdown,
