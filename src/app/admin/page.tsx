@@ -7,6 +7,7 @@ import AdminTeamTable from "@/components/AdminTeamTable";
 import DivergentPairCard from "@/components/DivergentPairCard";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { TeamWithMembersAndSubmission, DivergentPairResult } from "@/types";
+import { questions } from "@/lib/questions";
 
 export default function AdminPage() {
   const [password, setPassword] = useState(() => {
@@ -77,6 +78,62 @@ export default function AdminPage() {
     }
   }
 
+  function handleExportCsv() {
+    if (teams.length === 0) return;
+
+    const getLabel = (dbCol: string, key: string | null) => {
+      if (!key) return "";
+      const q = questions.find((q) => q.dbColumn === dbCol);
+      const opt = q?.options.find((o) => o.key === key);
+      return opt?.label || key;
+    };
+
+    const escape = (val: string) => {
+      if (val.includes(",") || val.includes('"') || val.includes("\n")) {
+        return `"${val.replace(/"/g, '""')}"`;
+      }
+      return val;
+    };
+
+    const header = [
+      "Team Name",
+      "Members",
+      "Status",
+      "IP Strategy",
+      "Funding Strategy",
+      "Partnership Strategy",
+      "Market Strategy",
+      "Product Innovation Strategy",
+      "Slides URL",
+      "Submitted At",
+    ];
+
+    const rows = teams.map((team) => {
+      const sub = team.submissions?.[0];
+      return [
+        team.name,
+        team.team_members.map((m) => m.name).join("; "),
+        team.submitted ? "Submitted" : "Pending",
+        getLabel("q1_ip", sub?.q1_ip || null),
+        getLabel("q2_funding", sub?.q2_funding || null),
+        getLabel("q3_partnership", sub?.q3_partnership || null),
+        getLabel("q4_market", sub?.q4_market || null),
+        getLabel("q5_product", sub?.q5_product || null),
+        sub?.slides_url || "",
+        team.submitted_at || "",
+      ].map(escape);
+    });
+
+    const csv = [header.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "caisey-strategy-lab-export.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (!isAuthenticated) {
     return <AdminLogin onAuth={handleAuth} />;
   }
@@ -105,6 +162,13 @@ export default function AdminPage() {
                 className="bg-gray-800 border border-gray-700 text-gray-300 rounded-lg px-4 py-2 text-sm hover:bg-gray-700 transition"
               >
                 Refresh
+              </button>
+              <button
+                onClick={handleExportCsv}
+                disabled={teams.length === 0}
+                className="bg-gray-800 border border-gray-700 text-gray-300 rounded-lg px-4 py-2 text-sm hover:bg-gray-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Export CSV
               </button>
               <button
                 onClick={() => setShowClearDialog(true)}
