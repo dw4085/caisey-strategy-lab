@@ -1,10 +1,20 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { db, errMessage } from "@/lib/db";
+import { displayName, getHubUser, notSignedIn } from "@/lib/auth/server";
+import { teamIdOf } from "@/lib/teams";
+import { outbox } from "@/lib/outbox";
+import { teamRegistered } from "@/lib/teamEvents";
+import { teamLink } from "@/lib/links";
 
+const isUniqueViolation = (e: unknown) =>
+  (e as { code?: string })?.code === "23505";
+
+// GET /api/teams — every team with its members' names, for joining a team. Signed in.
 export async function GET() {
+  if (!(await getHubUser())) return notSignedIn();
   try {
     const rows = await db()`
-      SELECT t.*,
+      SELECT t.id, t.name, t.submitted, t.created_at,
         COALESCE((
           SELECT json_agg(json_build_object('id', m.id, 'name', m.name) ORDER BY m.created_at)
           FROM team_members m WHERE m.team_id = t.id
@@ -18,27 +28,23 @@ export async function GET() {
   }
 }
 
+// POST /api/teams — create a team; the signed-in person becomes its first member.
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const { name, members } = body as {
-    name: string;
-    members: string[];
-  };
+  const user = await getHubUser();
+  if (!user) return notSignedIn();
 
-  if (!name || !name.trim()) {
+  const body = await request.json().catch(() => ({}));
+  const name = String(body?.name ?? "").trim().replace(/\s+/g, " ");
+
+  if (!name) {
     return NextResponse.json(
       { error: "Team name is required" },
       { status: 400 }
     );
   }
-
-  const trimmedMembers = (members || [])
-    .map((m: string) => m.trim())
-    .filter((m: string) => m.length > 0);
-
-  if (trimmedMembers.length === 0) {
+  if (name.length > 60) {
     return NextResponse.json(
-      { error: "At least one team member is required" },
+      { error: "Team names are at most 60 characters" },
       { status: 400 }
     );
   }
@@ -46,9 +52,16 @@ export async function POST(request: NextRequest) {
   try {
     const sql = db();
 
+    if (await teamIdOf(user.id)) {
+      return NextResponse.json(
+        { error: "You're already on a team" },
+        { status: 409 }
+      );
+    }
+
     // Check for duplicate team name (case-insensitive)
     const existing = await sql`
-      SELECT id FROM teams WHERE lower(name) = lower(${name.trim()}) LIMIT 1
+      SELECT id FROM teams WHERE lower(name) = lower(${name}) LIMIT 1
     `;
     if (existing.length > 0) {
       return NextResponse.json(
@@ -57,18 +70,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create the team and its members together
+    // Create the team with its creator as the first member
     const teamId = crypto.randomUUID();
+    const memberName = displayName(user);
     const [[team]] = await sql.transaction([
-      sql`INSERT INTO teams (id, name) VALUES (${teamId}, ${name.trim()}) RETURNING *`,
+      sql`INSERT INTO teams (id, name) VALUES (${teamId}, ${name}) RETURNING *`,
       sql`
-        INSERT INTO team_members (team_id, name)
-        SELECT ${teamId}::uuid, unnest(${trimmedMembers}::text[])
+        INSERT INTO team_members (team_id, name, email, student_id)
+        VALUES (${teamId}, ${memberName}, ${user.email}, ${user.id})
       `,
     ]);
 
+    await outbox().enqueue(
+      teamRegistered(
+        user.id,
+        teamId,
+        { name, memberNames: [memberName], memberIds: [user.id] },
+        "created",
+        teamLink(request, teamId)
+      )
+    );
+    after(() => outbox().flush());
+
     return NextResponse.json(team, { status: 201 });
   } catch (e) {
+    if (isUniqueViolation(e)) {
+      return NextResponse.json(
+        { error: "That team name was just taken, or you're already on a team" },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ error: errMessage(e) }, { status: 500 });
   }
 }

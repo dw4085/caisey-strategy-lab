@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
 import { listTeams } from "@/lib/teams";
 import { errMessage } from "@/lib/db";
+import { staffOnly } from "@/lib/auth/server";
 import {
   findMostDivergentPair,
   MAX_DISTANCE,
   TeamSubmission,
 } from "@/lib/divergence";
 
+// GET /api/divergence — the two submitted teams whose answers differ most. Instructors and TAs only.
 export async function GET() {
+  const denied = await staffOnly();
+  if (denied) return denied;
   let teams;
   try {
     teams = await listTeams({ submittedOnly: true });

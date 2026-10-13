@@ -34,3 +34,38 @@ export async function getTeam(
 
 export const isUuid = (s: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
+// The team the signed-in person belongs to (team_members.student_id = hub person id), or null.
+export async function teamIdOf(studentId: string): Promise<string | null> {
+  const [row] = await db()`
+    SELECT team_id FROM team_members WHERE student_id = ${studentId}::uuid
+  `;
+  return row ? String(row.team_id) : null;
+}
+
+export async function isMember(teamId: string, studentId: string) {
+  if (!isUuid(teamId)) return false;
+  const rows = await db()`
+    SELECT 1 FROM team_members
+    WHERE team_id = ${teamId}::uuid AND student_id = ${studentId}::uuid
+  `;
+  return rows.length > 0;
+}
+
+// The team's name, members' names and hub person ids (for activity reports to every member).
+export async function teamRoster(teamId: string) {
+  const [row] = await db()`
+    SELECT t.name,
+      COALESCE(array_agg(m.name ORDER BY m.created_at) FILTER (WHERE m.id IS NOT NULL), '{}') AS names,
+      COALESCE(array_agg(m.student_id::text) FILTER (WHERE m.student_id IS NOT NULL), '{}') AS ids
+    FROM teams t LEFT JOIN team_members m ON m.team_id = t.id
+    WHERE t.id = ${teamId}::uuid
+    GROUP BY t.id
+  `;
+  if (!row) return null;
+  return {
+    name: String(row.name),
+    memberNames: row.names as string[],
+    memberIds: row.ids as string[],
+  };
+}

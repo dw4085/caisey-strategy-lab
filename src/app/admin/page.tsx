@@ -1,21 +1,16 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Header from "@/components/Header";
-import AdminLogin from "@/components/AdminLogin";
+import HubOutboxPanel from "@/components/HubOutboxPanel";
 import AdminTeamTable from "@/components/AdminTeamTable";
 import DivergentPairCard from "@/components/DivergentPairCard";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { TeamWithMembersAndSubmission, DivergentPairResult } from "@/types";
 import { questions } from "@/lib/questions";
 
+// Instructors and TAs only (see layout.tsx); the API routes check the same.
 export default function AdminPage() {
-  const [password, setPassword] = useState(() => {
-    if (typeof window !== "undefined") {
-      return sessionStorage.getItem("admin_password") || "";
-    }
-    return "";
-  });
   const [teams, setTeams] = useState<TeamWithMembersAndSubmission[]>([]);
   const [loading, setLoading] = useState(false);
   const [divergentPair, setDivergentPair] =
@@ -23,14 +18,12 @@ export default function AdminPage() {
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [divergenceError, setDivergenceError] = useState("");
 
-  const isAuthenticated = password.length > 0;
-
   const fetchTeams = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch("/api/admin/teams");
       const data = await res.json();
-      setTeams(data || []);
+      setTeams(Array.isArray(data) ? data : []);
     } catch {
       // ignore
     } finally {
@@ -38,14 +31,9 @@ export default function AdminPage() {
     }
   }, []);
 
-  function handleAuth(pw: string) {
-    setPassword(pw);
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem("admin_password", pw);
-    }
-    // Fetch teams after auth
-    setTimeout(() => fetchTeams(), 0);
-  }
+  useEffect(() => {
+    fetchTeams();
+  }, [fetchTeams]);
 
   async function handleFindDivergent() {
     setDivergenceError("");
@@ -65,11 +53,7 @@ export default function AdminPage() {
 
   async function handleClearAll() {
     try {
-      await fetch("/api/admin/clear", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-      });
+      await fetch("/api/admin/clear", { method: "POST" });
       setShowClearDialog(false);
       setDivergentPair(null);
       fetchTeams();
@@ -134,10 +118,6 @@ export default function AdminPage() {
     URL.revokeObjectURL(url);
   }
 
-  if (!isAuthenticated) {
-    return <AdminLogin onAuth={handleAuth} />;
-  }
-
   const submittedCount = teams.filter((t) => t.submitted).length;
 
   return (
@@ -178,6 +158,8 @@ export default function AdminPage() {
               </button>
             </div>
           </div>
+
+          <HubOutboxPanel />
 
           {/* Team table */}
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6">

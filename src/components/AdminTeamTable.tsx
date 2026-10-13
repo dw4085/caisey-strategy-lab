@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { TeamWithMembersAndSubmission } from "@/types";
 import { questions } from "@/lib/questions";
 
@@ -72,7 +73,12 @@ export default function AdminTeamTable({
                 }`}
               >
                 <td className="py-3 px-3 font-medium text-gray-100">
-                  {team.name}
+                  <Link
+                    href={`/dashboard/${team.id}`}
+                    className="hover:text-columbia-light transition"
+                  >
+                    {team.name}
+                  </Link>
                 </td>
                 <td className="py-3 px-3 text-gray-400">
                   {team.team_members.map((m) => m.name).join(", ")}

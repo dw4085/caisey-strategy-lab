@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import Header from "@/components/Header";
 import TeamRegistrationForm from "@/components/TeamRegistrationForm";
 import TeamSelector from "@/components/TeamSelector";
@@ -9,21 +10,33 @@ import TeamSelector from "@/components/TeamSelector";
 interface TeamBasic {
   id: string;
   name: string;
+  team_members: { id: string; name: string }[];
+}
+
+interface Me {
+  name: string;
+  firstName: string;
+  isStaff: boolean;
+  team: { id: string; name: string } | null;
 }
 
 export default function HomePage() {
   const [teams, setTeams] = useState<TeamBasic[]>([]);
+  const [me, setMe] = useState<Me | null>(null);
   const [showRegister, setShowRegister] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/teams")
-      .then((res) => res.json())
-      .then((data) => {
-        setTeams(data || []);
-        setLoading(false);
+    Promise.all([
+      fetch("/api/me").then((res) => (res.ok ? res.json() : null)),
+      fetch("/api/teams").then((res) => (res.ok ? res.json() : [])),
+    ])
+      .then(([meData, teamsData]) => {
+        setMe(meData);
+        setTeams(Array.isArray(teamsData) ? teamsData : []);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   return (
@@ -52,13 +65,46 @@ export default function HomePage() {
             </p>
           </div>
 
+          {me && (
+            <p className="text-center text-sm text-gray-400 mb-4">
+              Signed in as{" "}
+              <span className="text-gray-200 font-medium">{me.name}</span>
+              {me.isStaff && (
+                <>
+                  {" "}&middot;{" "}
+                  <Link
+                    href="/admin"
+                    className="text-columbia hover:text-columbia-light transition"
+                  >
+                    Admin dashboard
+                  </Link>
+                </>
+              )}
+            </p>
+          )}
+
           {loading ? (
             <div className="text-center text-gray-500">Loading...</div>
+          ) : me?.team ? (
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 text-center">
+              <p className="text-sm text-gray-400 mb-1">
+                Welcome back, {me.firstName}. You&apos;re on team
+              </p>
+              <p className="text-xl font-semibold text-gray-50 mb-5">
+                {me.team.name}
+              </p>
+              <Link
+                href={`/dashboard/${me.team.id}`}
+                className="block w-full bg-gradient-to-r from-columbia-light to-columbia-dark text-white font-medium rounded-xl px-6 py-4 hover:opacity-90 transition text-lg"
+              >
+                Open Team Dashboard
+              </Link>
+            </div>
           ) : showRegister ? (
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-semibold text-gray-50">
-                  Register Your Team
+                  Create Your Team
                 </h2>
                 <button
                   onClick={() => setShowRegister(false)}
@@ -77,13 +123,13 @@ export default function HomePage() {
                 onClick={() => setShowRegister(true)}
                 className="w-full bg-gradient-to-r from-columbia-light to-columbia-dark text-white font-medium rounded-xl px-6 py-4 hover:opacity-90 transition text-lg"
               >
-                Register New Team
+                Create a New Team
               </button>
 
               {teams.length > 0 && (
                 <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
                   <h2 className="text-sm font-medium text-gray-400 mb-3">
-                    Return to your team dashboard
+                    Or join a team a classmate created
                   </h2>
                   <TeamSelector teams={teams} />
                 </div>

@@ -39,7 +39,9 @@ export default function QuestionCard({
               key={option.key}
               className={`block rounded-lg p-4 cursor-pointer transition-all ${
                 disabled
-                  ? "opacity-60 cursor-not-allowed"
+                  ? isSelected
+                    ? "bg-columbia/10 border-2 border-columbia cursor-not-allowed"
+                    : "opacity-60 cursor-not-allowed"
                   : isSelected
                     ? "bg-columbia/10 border-2 border-columbia"
                     : "bg-gray-800/50 border border-gray-700 hover:border-gray-500"

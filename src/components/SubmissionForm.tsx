@@ -12,6 +12,7 @@ interface SubmissionFormProps {
   submittedAt: string | null;
   existingSubmission: Submission | null;
   onUpdate: () => void;
+  readOnly?: boolean;
 }
 
 export default function SubmissionForm({
@@ -20,6 +21,7 @@ export default function SubmissionForm({
   submittedAt,
   existingSubmission,
   onUpdate,
+  readOnly = false,
 }: SubmissionFormProps) {
   const [answers, setAnswers] = useState<Record<string, string | null>>({
     q1_ip: existingSubmission?.q1_ip || null,
@@ -59,6 +61,8 @@ export default function SubmissionForm({
         const data = await res.json();
         setError(data.error || "Failed to submit");
         setLoading(false);
+        // A teammate may have submitted meanwhile: show the team's current state
+        if (res.status === 409) onUpdate();
         return;
       }
 
@@ -111,7 +115,7 @@ export default function SubmissionForm({
           onChange={(val) =>
             setAnswers((prev) => ({ ...prev, [q.dbColumn]: val }))
           }
-          disabled={submitted}
+          disabled={submitted || readOnly}
           questionNumber={i + 1}
         />
       ))}
@@ -129,9 +133,19 @@ export default function SubmissionForm({
           value={slidesUrl}
           onChange={(e) => setSlidesUrl(e.target.value)}
           placeholder="https://docs.google.com/presentation/d/..."
-          disabled={submitted}
+          disabled={submitted || readOnly}
           className="w-full bg-gray-800 border border-gray-700 text-gray-100 rounded-lg px-4 py-3 focus:ring-2 focus:ring-columbia focus:border-transparent outline-none transition disabled:opacity-60"
         />
+        {readOnly && /^https?:\/\//i.test(slidesUrl) && (
+          <a
+            href={slidesUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block mt-3 text-sm text-columbia hover:text-columbia-light transition"
+          >
+            Open slides
+          </a>
+        )}
       </div>
 
       {error && (
@@ -140,27 +154,29 @@ export default function SubmissionForm({
         </div>
       )}
 
-      <div className="flex gap-3">
-        {submitted ? (
-          <button
-            onClick={handleUnsubmit}
-            disabled={loading}
-            className="flex-1 bg-gray-800 border border-gray-700 text-gray-200 rounded-lg px-6 py-3 hover:bg-gray-700 transition disabled:opacity-40"
-          >
-            {loading ? "Processing..." : "Unsubmit & Edit"}
-          </button>
-        ) : (
-          <button
-            onClick={handleSubmit}
-            disabled={!canSubmit}
-            className="flex-1 bg-gradient-to-r from-columbia-light to-columbia-dark text-white font-medium rounded-lg px-6 py-3 hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {loading ? "Submitting..." : "Submit"}
-          </button>
-        )}
-      </div>
+      {!readOnly && (
+        <div className="flex gap-3">
+          {submitted ? (
+            <button
+              onClick={handleUnsubmit}
+              disabled={loading}
+              className="flex-1 bg-gray-800 border border-gray-700 text-gray-200 rounded-lg px-6 py-3 hover:bg-gray-700 transition disabled:opacity-40"
+            >
+              {loading ? "Processing..." : "Unsubmit & Edit"}
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={!canSubmit}
+              className="flex-1 bg-gradient-to-r from-columbia-light to-columbia-dark text-white font-medium rounded-lg px-6 py-3 hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {loading ? "Submitting..." : "Submit"}
+            </button>
+          )}
+        </div>
+      )}
 
-      {!submitted && !allAnswered && (
+      {!readOnly && !submitted && !allAnswered && (
         <p className="text-xs text-gray-500 text-center">
           Answer all 5 questions and add a slides URL to submit
         </p>
