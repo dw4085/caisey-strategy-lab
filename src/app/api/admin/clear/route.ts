@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { db, errMessage } from "@/lib/db";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -9,15 +9,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Delete all teams — cascade will handle team_members and submissions
-  const { error } = await supabase
-    .from("teams")
-    .delete()
-    .neq("id", "00000000-0000-0000-0000-000000000000"); // delete all rows
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    // Delete all teams — cascade handles team_members and submissions
+    await db()`DELETE FROM teams`;
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    return NextResponse.json({ error: errMessage(e) }, { status: 500 });
   }
-
-  return NextResponse.json({ success: true });
 }

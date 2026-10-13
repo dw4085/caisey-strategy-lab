@@ -1,36 +1,15 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CAiSEY Strategy Lab
 
-## Getting Started
+Team-based strategy exercise for Technology Strategy at Columbia Business School. Teams register,
+answer five strategic questions about CAiSEY and link their slides; the instructor's dashboard
+shows every team's answers and finds the most divergent pair for discussion.
 
-First, run the development server:
+## Setup
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1. Create a Neon project and run `schema.sql` in the Neon SQL Editor.
+2. Copy `.env.example` to `.env.local` and fill in `DATABASE_URL` (Neon pooled connection string)
+   and `ADMIN_PASSWORD`.
+3. `npm install && npm run dev` (http://localhost:3000).
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The browser never talks to the database: all reads and writes go through the API routes in
+`src/app/api/`, which use the lazy Neon client `db()` from `src/lib/db.ts` (server-only).

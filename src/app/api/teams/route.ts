@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { db, errMessage } from "@/lib/db";
 
 export async function GET() {
-  const { data, error } = await supabase
-    .from("teams")
-    .select("*, team_members(id, name)")
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    const rows = await db()`
+      SELECT t.*,
+        COALESCE((
+          SELECT json_agg(json_build_object('id', m.id, 'name', m.name) ORDER BY m.created_at)
+          FROM team_members m WHERE m.team_id = t.id
+        ), '[]'::json) AS team_members
+      FROM teams t
+      ORDER BY t.created_at ASC
+    `;
+    return NextResponse.json(rows);
+  } catch (e) {
+    return NextResponse.json({ error: errMessage(e) }, { status: 500 });
   }
-
-  return NextResponse.json(data);
 }
 
 export async function POST(request: NextRequest) {
@@ -39,46 +43,32 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Check for duplicate team name (case-insensitive)
-  const { data: existing } = await supabase
-    .from("teams")
-    .select("id")
-    .ilike("name", name.trim())
-    .limit(1);
+  try {
+    const sql = db();
 
-  if (existing && existing.length > 0) {
-    return NextResponse.json(
-      { error: "A team with this name already exists" },
-      { status: 409 }
-    );
+    // Check for duplicate team name (case-insensitive)
+    const existing = await sql`
+      SELECT id FROM teams WHERE lower(name) = lower(${name.trim()}) LIMIT 1
+    `;
+    if (existing.length > 0) {
+      return NextResponse.json(
+        { error: "A team with this name already exists" },
+        { status: 409 }
+      );
+    }
+
+    // Create the team and its members together
+    const teamId = crypto.randomUUID();
+    const [[team]] = await sql.transaction([
+      sql`INSERT INTO teams (id, name) VALUES (${teamId}, ${name.trim()}) RETURNING *`,
+      sql`
+        INSERT INTO team_members (team_id, name)
+        SELECT ${teamId}::uuid, unnest(${trimmedMembers}::text[])
+      `,
+    ]);
+
+    return NextResponse.json(team, { status: 201 });
+  } catch (e) {
+    return NextResponse.json({ error: errMessage(e) }, { status: 500 });
   }
-
-  // Create team
-  const { data: team, error: teamError } = await supabase
-    .from("teams")
-    .insert({ name: name.trim() })
-    .select()
-    .single();
-
-  if (teamError) {
-    return NextResponse.json({ error: teamError.message }, { status: 500 });
-  }
-
-  // Create members
-  const memberRows = trimmedMembers.map((memberName: string) => ({
-    team_id: team.id,
-    name: memberName,
-  }));
-
-  const { error: membersError } = await supabase
-    .from("team_members")
-    .insert(memberRows);
-
-  if (membersError) {
-    // Clean up the team if members fail
-    await supabase.from("teams").delete().eq("id", team.id);
-    return NextResponse.json({ error: membersError.message }, { status: 500 });
-  }
-
-  return NextResponse.json(team, { status: 201 });
 }

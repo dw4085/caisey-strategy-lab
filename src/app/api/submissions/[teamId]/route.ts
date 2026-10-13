@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { db, errMessage } from "@/lib/db";
+import { isUuid } from "@/lib/teams";
 
 export async function GET(
   _request: Request,
@@ -7,17 +8,17 @@ export async function GET(
 ) {
   const { teamId } = await params;
 
-  const { data, error } = await supabase
-    .from("submissions")
-    .select("*")
-    .eq("team_id", teamId)
-    .single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 404 });
+  try {
+    const [submission] = isUuid(teamId)
+      ? await db()`SELECT * FROM submissions WHERE team_id = ${teamId}`
+      : [];
+    if (!submission) {
+      return NextResponse.json({ error: "Submission not found" }, { status: 404 });
+    }
+    return NextResponse.json(submission);
+  } catch (e) {
+    return NextResponse.json({ error: errMessage(e) }, { status: 500 });
   }
-
-  return NextResponse.json(data);
 }
 
 // Unsubmit: keep the submission row but mark team as not submitted
@@ -27,14 +28,12 @@ export async function DELETE(
 ) {
   const { teamId } = await params;
 
-  const { error } = await supabase
-    .from("teams")
-    .update({ submitted: false, submitted_at: null })
-    .eq("id", teamId);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    if (isUuid(teamId)) {
+      await db()`UPDATE teams SET submitted = false, submitted_at = NULL WHERE id = ${teamId}`;
+    }
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    return NextResponse.json({ error: errMessage(e) }, { status: 500 });
   }
-
-  return NextResponse.json({ success: true });
 }

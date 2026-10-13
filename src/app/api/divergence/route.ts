@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { listTeams } from "@/lib/teams";
+import { errMessage } from "@/lib/db";
 import {
   findMostDivergentPair,
   MAX_DISTANCE,
@@ -7,46 +8,29 @@ import {
 } from "@/lib/divergence";
 
 export async function GET() {
-  const { data: teams, error } = await supabase
-    .from("teams")
-    .select("*, team_members(id, name), submissions(*)")
-    .eq("submitted", true)
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  let teams;
+  try {
+    teams = await listTeams({ submittedOnly: true });
+  } catch (e) {
+    return NextResponse.json({ error: errMessage(e) }, { status: 500 });
   }
 
-  // Normalize submissions (Supabase returns object due to unique constraint)
-  const normalized = (teams || []).map((t: Record<string, unknown>) => ({
-    ...t,
-    submissions: t.submissions
-      ? Array.isArray(t.submissions)
-        ? t.submissions
-        : [t.submissions]
-      : [],
-  }));
-
-  // Build team submissions array
-  const teamSubmissions: TeamSubmission[] = normalized
-    .filter(
-      (t: Record<string, unknown>) =>
-        Array.isArray(t.submissions) && (t.submissions as unknown[]).length > 0
-    )
-    .map((t: Record<string, unknown>) => {
-      const sub = (t.submissions as Record<string, unknown>[])[0];
-      return {
-        teamId: t.id as string,
-        teamName: t.name as string,
-        answers: {
-          q1_ip: (sub.q1_ip as string) || null,
-          q2_funding: (sub.q2_funding as string) || null,
-          q3_partnership: (sub.q3_partnership as string) || null,
-          q4_market: (sub.q4_market as string) || null,
-          q5_product: (sub.q5_product as string) || null,
-        },
-      };
-    });
+  // Only teams with a submission row take part
+  const withSubmissions = teams.filter((t) => t.submissions.length > 0);
+  const teamSubmissions: TeamSubmission[] = withSubmissions.map((t) => {
+    const sub = t.submissions[0];
+    return {
+      teamId: t.id,
+      teamName: t.name,
+      answers: {
+        q1_ip: sub.q1_ip || null,
+        q2_funding: sub.q2_funding || null,
+        q3_partnership: sub.q3_partnership || null,
+        q4_market: sub.q4_market || null,
+        q5_product: sub.q5_product || null,
+      },
+    };
+  });
 
   if (teamSubmissions.length < 2) {
     return NextResponse.json(
@@ -65,8 +49,8 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    team1: normalized[result.team1Index],
-    team2: normalized[result.team2Index],
+    team1: withSubmissions[result.team1Index],
+    team2: withSubmissions[result.team2Index],
     distance: result.distance,
     maxDistance: MAX_DISTANCE,
     breakdown: result.breakdown,
